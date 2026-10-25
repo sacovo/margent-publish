@@ -75,6 +75,8 @@ Then tell Margent which pages are decks with a `manifest.json` at the root of th
 ```
 
 `source_file` is the deck's path in the repository, so review comments point back to its lines.
+If a deck's `.md` source is uploaded anyway, Margent hides its plain page next to the deck
+(an owner can turn that off per project), but leaving it out keeps the build smaller.
 
 A complete workflow for a repository with Markdown pages and decks at `slides/<deck>/slides.md`
 (npm project in `slides/` with `@marp-team/marp-cli`; adjust paths and branch):
