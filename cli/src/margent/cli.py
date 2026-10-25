@@ -25,7 +25,7 @@ from pathlib import Path
 import yaml
 
 from . import gitinfo
-from .archive import ArchiveError, build_archive
+from .archive import ArchiveError, build_archive, ignored_html
 
 CONFIG_NAME = ".margent.yml"
 TIMEOUT = 300
@@ -174,7 +174,19 @@ def push(args) -> int:
         raise CLIError(f"{build_dir} is not a directory.")
     branch = args.branch or info.branch
     # A source folder (PLAN §2.8) uploads without what .gitignore keeps out of the repo.
-    body, paths = build_archive(build_dir, config_text, gitinfo.ignored(build_dir))
+    ignored = gitinfo.ignored(build_dir)
+    body, paths = build_archive(build_dir, config_text, ignored)
+    if skipped := ignored_html(build_dir, ignored):
+        # Built pages under a tracked folder are usually git-ignored output, and dropping them
+        # silently looks like a rendering problem on the server.
+        shown = ", ".join(skipped[:5]) + (f" and {len(skipped) - 5} more" if len(skipped) > 5 else "")
+        folder = build_dir.as_posix().rstrip("/")
+        example = f" (`{folder}/` in .gitignore)" if folder not in ("", ".") else ""
+        print(
+            f"Warning: {len(skipped)} git-ignored HTML file(s) left out: {shown}. "
+            f"To upload a build folder whole, git-ignore the folder itself{example}.",
+            file=sys.stderr,
+        )
     headers = {"X-Margent-Branch": branch, "X-Margent-Repo": info.repo}
     if info.sha and not info.dirty:
         headers["X-Margent-Sha"] = info.sha

@@ -400,3 +400,35 @@ def test_action_requirements_match_the_lock():
     for name in runtime:
         for wheel in deps[name]["wheels"]:
             assert wheel["hash"].replace("sha256:", "--hash=sha256:") in reqs
+
+
+def test_git_ignored_html_is_reported(repo, uploads, monkeypatch, capsys):
+    """Built decks under a tracked staging folder vanish silently otherwise (index.html ignored)."""
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("MARGENT_TOKEN", "acp_test")
+    monkeypatch.setenv("MARGENT_SERVER", "https://app.test")
+    # slides/.gitignore keeps Marp output out of the repo, and staging copies it along.
+    for path, text in (("_stage/slides/.gitignore", "*/index.html\n"), ("_stage/slides/intro/index.html", "x")):
+        (repo / path).parent.mkdir(parents=True, exist_ok=True)
+        (repo / path).write_text(text)
+    assert cli.main(["push", "_stage"]) == 0
+    err = capsys.readouterr().err
+    assert "slides/intro/index.html" in err and "`_stage/` in .gitignore" in err
+    assert "slides/intro/index.html" not in members(uploads[0]["body"])
+
+
+def test_no_warning_for_an_ignored_build_dir(repo, uploads, monkeypatch, capsys):
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("MARGENT_TOKEN", "acp_test")
+    monkeypatch.setenv("MARGENT_SERVER", "https://app.test")
+    assert cli.main(["push", "dist"]) == 0
+    assert "Warning" not in capsys.readouterr().err
+
+
+def test_ignored_html_lists_each_file_once(tmp_path):
+    """git can report a folder and a file inside it; the warning counts the file once."""
+    from margent.archive import ignored_html
+
+    (tmp_path / "deck").mkdir()
+    (tmp_path / "deck" / "index.html").write_text("x")
+    assert ignored_html(tmp_path, {"deck/", "deck/index.html"}) == ["deck/index.html"]

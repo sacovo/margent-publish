@@ -58,6 +58,19 @@ def _info(name: str, size: int) -> tarfile.TarInfo:
     return info
 
 
+def ignored_html(build_dir: Path, ignored: set[str]) -> list[str]:
+    """The .html files `ignored` leaves out: usually build output under a tracked folder."""
+    found = []
+    for entry in sorted(ignored):
+        if entry.endswith("/"):
+            for root, dirs, files in os.walk(build_dir / entry):
+                dirs[:] = [d for d in dirs if d not in SKIP_NAMES]
+                found += [(Path(root) / f).relative_to(build_dir).as_posix() for f in files if f.endswith(".html")]
+        elif entry.endswith(".html"):
+            found.append(entry)
+    return sorted(set(found))  # git can list a folder and a file inside it
+
+
 def build_archive(build_dir: Path, config_text: str, ignored: set[str] = frozenset()) -> tuple[bytes, list[str]]:
     """Return (tar.gz bytes, file list). Uses build_dir/manifest.json if present."""
     paths = collect(build_dir, ignored)

@@ -12,7 +12,8 @@ uv run --project /path/to/margent/cli margent push .      # Markdown/CSV sources
 
 Git-ignored files are left out, so pushing `.` doesn't upload `.venv/` or data your
 `.gitignore` keeps private. A folder that is itself ignored (a typical `dist/`) is
-uploaded whole.
+uploaded whole. Git-ignored `.html` files that are left out get a warning: built pages in
+a tracked staging folder usually mean the folder itself should be ignored.
 
 What it needs:
 
