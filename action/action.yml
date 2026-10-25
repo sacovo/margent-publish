@@ -1,0 +1,48 @@
+name: margent-publish
+description: Upload a static build to Margent, authenticated by GitHub OIDC (no secrets).
+inputs:
+  dir:
+    description: Build output directory to publish.
+    required: true
+  server:
+    description: Server URL. Defaults to `server:` in .margent.yml.
+    required: false
+    default: ""
+  gitleaks:
+    description: Scan the build with gitleaks before uploading ("true"/"false"). The server scans again either way.
+    required: false
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Scan build for secrets (gitleaks)
+      if: inputs.gitleaks == 'true'
+      shell: bash
+      env:
+        INPUT_DIR: ${{ inputs.dir }}
+        GITLEAKS_VERSION: 8.30.1
+        GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+      run: |
+        set -euo pipefail
+        archive="$RUNNER_TEMP/gitleaks.tar.gz"
+        curl -sSfL -o "$archive" \
+          "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+        echo "${GITLEAKS_SHA256}  ${archive}" | sha256sum -c -
+        tar -xzf "$archive" -C "$RUNNER_TEMP" gitleaks
+        "$RUNNER_TEMP/gitleaks" dir "$INPUT_DIR" --redact --no-banner --exit-code 1
+
+    - name: Publish
+      shell: bash
+      env:
+        INPUT_DIR: ${{ inputs.dir }}
+        INPUT_SERVER: ${{ inputs.server }}
+      run: |
+        set -euo pipefail
+        args=(push "$INPUT_DIR" --oidc)
+        if [ -n "$INPUT_SERVER" ]; then args+=(--server "$INPUT_SERVER"); fi
+        # Only hash-pinned wheels from PyPI in a job that holds id-token: write; the CLI runs from source.
+        venv="$RUNNER_TEMP/margent-venv"
+        python3 -m venv "$venv"
+        "$venv/bin/pip" install --quiet --disable-pip-version-check --require-hashes --only-binary :all: \
+          -r "$GITHUB_ACTION_PATH/requirements.txt"
+        PYTHONPATH="$GITHUB_ACTION_PATH/../cli/src" "$venv/bin/python" -m margent.cli "${args[@]}"
