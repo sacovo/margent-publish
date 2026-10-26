@@ -1,8 +1,8 @@
 # Margent CLI
 
 `margent push` uploads a folder to Margent: a built static site, or the sources
-themselves. The server renders Markdown and CSV files into pages, so a repo of
-Markdown needs no build step. Run it from inside the content repo's git checkout.
+themselves. The server renders Markdown and table files (CSV, Parquet, Arrow, NDJSON,
+Excel) into pages, so a repo of Markdown needs no build step. Run it from inside the content repo's git checkout.
 
 ```sh
 uv run --project /path/to/margent/cli margent push dist   # a built site
@@ -44,5 +44,20 @@ processing, `2` usage, git or network errors.
 Other options: `--dry-run` lists the files without uploading. `--oidc` authenticates with
 the GitHub Actions OIDC token instead of `MARGENT_TOKEN` (used by `../action`; the
 server may then come from the yml, since the token's audience binds it).
+
+## margent check
+
+`margent check [DIR]` tells you before a push which table files (CSV/TSV, Parquet, Arrow,
+NDJSON, Excel) will be shown as tables and which will only be downloads, and whether the
+upload would be refused (a file over the size limit, too many files). `push` runs the same
+check and prints a warning for each problem; the push itself goes ahead.
+
+The limits come from the server (`GET /api/limits`, no token sent, so the server may come
+from `.margent.yml` here), falling back to built-in ones when it can't be reached. CSV and
+NDJSON files are read the way the server reads them. Parquet and Arrow files get their
+footer checked; with `pyarrow` installed also rows, columns and types. Excel workbooks get
+their zip directory and first sheet's size checked. A binary file's unpacked size is only
+known to the server. Exit code `1` when any file won't be a table or the upload would be
+refused, so it can gate CI.
 
 Tests: `uv run pytest`.

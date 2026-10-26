@@ -1,4 +1,5 @@
 """margent push [DIR] [--server URL] [--branch B] [--dry-run] [--oidc]
+margent check [DIR] [--server URL]
 
 Token: MARGENT_TOKEN (a personal API token with the builds:push scope),
 or --oidc inside GitHub Actions (needs `permissions: id-token: write`).
@@ -10,11 +11,16 @@ token's audience is bound to that server.
 
 The server scans and publishes in the background; push polls GET /api/builds/<id>
 (same credentials; a fresh OIDC token per poll) and prints the outcome, unless --no-wait.
+
+check compares the folder with the server's limits (GET /api/limits, public: no token
+is sent, so the server may come from the yml too): which files will be tables, and
+whether the upload would be refused. push runs the same check and warns.
 """
 
 import argparse
 import json
 import os
+import subprocess
 import sys
 import time
 import urllib.error
@@ -24,8 +30,9 @@ from pathlib import Path
 
 import yaml
 
-from . import gitinfo
-from .archive import ArchiveError, build_archive, ignored_html
+from . import check as checker
+from . import gitinfo, limits
+from .archive import ArchiveError, build_archive, collect, ignored_html
 
 CONFIG_NAME = ".margent.yml"
 TIMEOUT = 300
@@ -194,6 +201,9 @@ def push(args) -> int:
         headers["X-Margent-Dirty"] = "1"
     state = "dirty" if info.dirty else info.sha[:12]
     print(f"{len(paths)} files, {len(body)} bytes; {info.repo or '?'} {branch or '?'} ({state}) -> {server}")
+    limit_set, source = limits.fetch(server)
+    for r in checker.problems(checker.check(build_dir, paths, limit_set)):
+        print(f"Warning: {r.path}: {r.message} (margent check {args.dir} for details).", file=sys.stderr)
     if args.dry_run:
         for p in paths:
             print(f"  {p}")
@@ -213,6 +223,25 @@ def push(args) -> int:
     return report(status, data)
 
 
+def check(args) -> int:
+    build_dir = Path(args.dir)
+    if not build_dir.is_dir():
+        raise CLIError(f"{build_dir} is not a directory.")
+    server, ignored = args.server or os.environ.get("MARGENT_SERVER"), set()
+    try:
+        info = gitinfo.detect(Path.cwd())
+        ignored = gitinfo.ignored(build_dir)
+        config_path = info.root / CONFIG_NAME
+        config = yaml.safe_load(config_path.read_text()) if config_path.is_file() else {}
+        repo_server = config.get("server") if isinstance(config, dict) else None
+        server = server or (repo_server if isinstance(repo_server, str) else None)
+    except (subprocess.CalledProcessError, OSError, yaml.YAMLError):  # not a git checkout: the folder as it is
+        ignored = set()
+    paths = collect(build_dir, ignored)
+    limit_set, source = limits.fetch(check_server(server) if server else None)
+    return checker.report(checker.check(build_dir, paths, limit_set), source, sys.stdout)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="margent")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -223,9 +252,12 @@ def main(argv=None) -> int:
     p.add_argument("--dry-run", action="store_true", help="Build the archive and list files; don't upload.")
     p.add_argument("--no-wait", action="store_true", help="Don't wait for the server's scan and publish.")
     p.add_argument("--oidc", action="store_true", help="Authenticate with the GitHub Actions OIDC token.")
+    c = sub.add_parser("check", help="Check which files will be tables, and that the upload fits the limits.")
+    c.add_argument("dir", nargs="?", default="dist", help="Folder to check (default: dist).")
+    c.add_argument("--server", help="Server whose limits to use (default: MARGENT_SERVER, then the yml's).")
     args = parser.parse_args(argv)
     try:
-        return push(args)
+        return check(args) if args.command == "check" else push(args)
     except (CLIError, ArchiveError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
