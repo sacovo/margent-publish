@@ -154,7 +154,9 @@ def report(status: int, data: dict, out=None) -> int:
             print("False positive? Add the path or the fingerprint to secrets_allowlist in .margent.yml.", file=out)
         return 1
     accepted = data.get("accepted", 0)
-    print(f"Build {data.get('build')}: accepted by {accepted} project(s).", file=out)
+    # No build ID when the server refused before creating one (no project could accept it).
+    what = f"Build {data['build']}" if data.get("build") else "Upload"
+    print(f"{what}: accepted by {accepted} project(s).", file=out)
     for project in data.get("projects", []):
         print(f"  {project}", file=out)
     if not accepted:

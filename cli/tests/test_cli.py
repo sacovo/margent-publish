@@ -274,6 +274,10 @@ def test_report_findings(capsys):
 def test_report_none_accepted(capsys):
     assert cli.report(200, {"build": "bld_x", "accepted": 0}) == 0
     assert "No project accepted" in capsys.readouterr().out
+    # Refused before a build was created: no build ID to show.
+    assert cli.report(200, {"build": None, "accepted": 0}) == 0
+    out = capsys.readouterr().out
+    assert "None" not in out and out.startswith("Upload: accepted by 0") and "No project accepted" in out
 
 
 def test_paths_are_posix(build):

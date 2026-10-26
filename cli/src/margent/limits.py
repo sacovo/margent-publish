@@ -18,6 +18,7 @@ DEFAULTS = {
         "total_bytes": 500 * MB,
         "file_bytes": 50 * MB,
         "files": 10_000,
+        "entries": 20_000,
         "path_length": 300,
         "path_depth": 20,
     },

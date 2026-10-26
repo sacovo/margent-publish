@@ -97,7 +97,8 @@ The checkout is needed in the publish job because the CLI reads
   (Actions logs of public repos are public). The server scans in the background;
   the step polls the build's status (a fresh OIDC token per poll) and fails if the
   build is rejected. Secret-scan rejections list
-  `file:line:rule (fingerprint)`, never the secret. Add a path glob or the
+  `file:line:rule (fingerprint)` (for a table's cells,
+  `file:row N, column M:rule (fingerprint)`), never the secret. Add the exact file path or the
   fingerprint to `secrets_allowlist` for false positives.
 - Projects can additionally pin the workflow file and a protected GitHub
   Environment for main in their settings.
