@@ -21,6 +21,8 @@ Look at what the repository contains and pick per kind of content:
 | Markdown (`.md`) and CSV/TSV | Nothing: upload the sources. Margent renders them (`a/b.md` → `a/b.html`, `a/b.csv` → `a/b.csv.html`). |
 | Static HTML that a tool builds (site generator, script) | Build it in the workflow and upload the output folder. |
 | **Marp decks** (`.md` with `marp: true` front matter) | **Build them** as described below. Margent renders a Marp source as a plain Markdown page, which looks wrong. |
+| PDF | Upload it. Margent shows it with comments (`a/b.pdf` → `a/b.pdf.html`). |
+| **LaTeX** | **Build the PDF** in the workflow (Margent never compiles TeX), with SyncTeX so comments point at `.tex` lines: see below. |
 | Mixed | Stage one folder: copy the sources you want reviewed, build the rest into it, upload that. |
 
 Never upload `node_modules`, build caches, `.env` files or other local state. Staging from
@@ -126,16 +128,40 @@ Add `_margent/` to the root `.gitignore` (see above). Commit the plugin copy und
 your `.gitignore` doesn't match. For example, Python's
 template ignores `lib/`.
 
+## LaTeX
+
+Build the PDF where the workflow runs, with the fonts and packages the document needs (the
+same steps as any CI build of it), and `-synctex=1`. Copy the PDF and its `.synctex.gz`
+into the staging folder next to the sources, and list them in `manifest.json`:
+
+```yaml
+      - name: Build PDFs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends texlive-latex-extra latexmk
+          (cd paper && latexmk -pdf -synctex=1 -interaction=nonstopmode -halt-on-error main.tex)
+          cp paper/main.pdf paper/main.synctex.gz _margent/paper/
+          jq -n '{documents: [{path: "paper/main.pdf", kind: "pdf",
+            source_file: "paper/main.tex", synctex: "paper/main.synctex.gz"}]}' > _margent/manifest.json
+```
+
+`source_file` is the main `.tex` file, as a repository path: Margent finds it among the
+SyncTeX inputs and makes the other inputs (`\input`, `\include`) repository paths from it.
+Agents then get the file and a line range for each comment. A passage inside a macro argument
+or a table row maps to the line where it closes, so the range is approximate. Without SyncTeX
+(or without the manifest entry) the PDF still gets comments, and agents get its page.
+
 ## manifest.json
 
 Optional. Every `.html` file is a document either way; the manifest adds to it:
 
 | Key | |
 |---|---|
-| `path` | the HTML file in the upload |
-| `kind` | `html`, `md`, `marp`, `table` or `viz` |
+| `path` | the HTML file in the upload, or a PDF |
+| `kind` | `html`, `md`, `marp`, `table`, `viz`, or `pdf` for a PDF built from LaTeX |
 | `title` | shown in Margent's document list |
-| `source_file` | the repository file it was built from |
+| `source_file` | the repository file it was built from (a PDF's: its main `.tex`) |
+| `synctex` | a PDF's `.synctex.gz` in the upload |
 
 ## Checks before you finish
 
